@@ -99,16 +99,16 @@ Residual diagnostics were conducted using:
 ```
 time-series-retail-forecasting/
 │
-├── time_series_analysis.Rmd # main analysis and modeling code
-├── time_series_forecasting_report.html # rendered report with results
-├── time_series_forecasting_slides.pptx # presentation slides
-├── retail_sales_data.csv # dataset
+├── retail_sales_data.csv # Dataset
+├── time_series_analysis.Rmd # Analysis and modeling code
+├── time_series_forecasting_report.html # Final report
+├── time_series_forecasting_slides.pptx # Presentation slides
 └── README.md
 ```
 
 ---
 
-## 🚀 Future Improvements
+## Future Improvements
 
 - Incorporate external variables (e.g., economic indicators)  
 - Explore machine learning-based forecasting models  
