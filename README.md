@@ -97,10 +97,12 @@ Residual diagnostics were conducted using:
 
 ## Project Structure
 time-series-retail-forecasting/
-├── data/
-├── code/
-├── report/
-├── slides/
+│
+├── time_series_analysis.Rmd # main analysis and modeling code
+├── time_series_forecasting_report.html # rendered report with results
+├── time_series_forecasting_slides.pptx # presentation slides
+├── retail_sales_data.csv # dataset
+└── README.md
 
 
 ---
