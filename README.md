@@ -1,60 +1,130 @@
-# Time-Series Analysis and Forecasting of Monthly U.S. Retail Sales
+# 📈 Time-Series Analysis and Forecasting of U.S. Retail Sales
 
-## Overview
-This project analyzes and forecasts monthly U.S. retail sales using classical time-series methods. The goal is to compare models from different categories and identify the model with the best predictive performance.
+## 📌 Project Overview
+This project analyzes and forecasts monthly U.S. retail sales using classical time-series models. The goal is to compare different modeling approaches and identify the most accurate method for capturing both trend and seasonality in real-world economic data.
 
-## Dataset
-- **Source:** Federal Reserve Economic Data (FRED)
-- **Series ID:** MRTSSM44000USN
-- **Coverage:** January 1992 – October 2025
-- **Frequency:** Monthly
-- **Sample Size:** 406 observations
-- **Unit:** Millions of U.S. dollars
+Retail sales are a key indicator of consumer behavior and overall economic activity. Accurate forecasting helps support business planning, demand estimation, and strategic decision-making.
 
-## Project Objective
-Retail sales reflect consumer spending and overall economic activity. Because the series shows both trend and strong seasonality, this project evaluates several forecasting methods to determine which model best captures the data and produces accurate out-of-sample forecasts.
+---
 
-## Methods
-The following models were compared:
-- Seasonal Naive (baseline)
-- ETS (Error, Trend, Seasonal)
-- SARIMA
-- Regression with ARMA errors
+## 📊 Dataset
+- **Source:** Federal Reserve Economic Data (FRED)  
+- **Series ID:** MRTSSM44000USN  
+- **Frequency:** Monthly  
+- **Time Range:** January 1992 – October 2025  
+- **Observations:** 406  
 
-## Exploratory Analysis
-The project examined the original series, Box-Cox transformation, first-order differencing, and seasonal differencing. The analysis showed strong seasonality and changing variance, and differencing was used to help achieve stationarity.
+The dataset exhibits a strong upward trend and clear seasonal patterns, making it well-suited for time-series modeling.
 
-## Model Evaluation
+---
+
+## ⚙️ Methodology
+
+### 1. Exploratory Data Analysis
+- Visualized the original time series to identify trend and seasonality  
+- Applied **Box-Cox transformation** to stabilize variance  
+- Performed **first-order differencing** and **seasonal differencing**  
+- Analyzed **ACF and PACF plots** to guide model selection  
+
+---
+
+### 2. Models Implemented
+
+#### 🔹 Baseline Model
+- **Seasonal Naive**  
+  - Assumes values repeat from the same period in the previous year  
+  - Serves as a benchmark for comparison  
+
+#### 🔹 Advanced Models
+- **ETS (Error-Trend-Seasonal)**  
+- **SARIMA (Seasonal ARIMA)**  
+- **Regression with ARMA errors**  
+
+These models represent different approaches:
+- smoothing-based methods (ETS)  
+- parametric time-series models (SARIMA)  
+- regression + time-series residual modeling  
+
+---
+
+### 3. Model Evaluation
+
 Models were evaluated using:
-- RMSE
-- MAE
-- MAPE
-- Residual diagnostics
-- Ljung-Box tests
 
-## Key Results
-- The baseline Seasonal Naive model captured yearly seasonality but underestimated the upward trend.
-- SARIMA improved substantially over the baseline.
-- ETS achieved the best forecast accuracy on the test set.
-- The final comparison showed that ETS had the strongest alignment with the observed 2023–2025 data.
+- **RMSE (Root Mean Squared Error)**  
+- **MAE (Mean Absolute Error)**  
+- **MAPE (Mean Absolute Percentage Error)**  
 
-## Main Finding
-ETS provided the best predictive performance overall, with a test-set MAPE of about 1.34% and RMSE of about 10,019.5, outperforming the other models in forecast accuracy.
+Residual diagnostics were conducted using:
+- **ACF of residuals**
+- **Ljung-Box tests** to check independence  
 
-## Files
-- `Final version.Rmd` — source analysis and code
-- `Final-version-copy.html` — rendered report
-- `Final.pptx` — presentation slides
-- `MRTSSM44000USN.csv` — dataset
+---
 
-## Tools
-- R
-- R Markdown
-- forecast package
-- ggplot2
+## 📈 Results
 
-## Future Improvements
-A potential next step is to study the structural break caused by COVID-19 more explicitly by comparing models trained on pre-COVID and post-COVID periods separately.
+| Model | Performance |
+|------|------------|
+| Seasonal Naive | Captures seasonality but fails to model upward trend |
+| SARIMA | Improves fit and captures temporal structure |
+| Regression + ARMA | Adds flexibility with explanatory components |
+| **ETS (Best)** | Achieves lowest forecast error and best alignment with actual data |
 
-## Author
-Yunelle Teng
+👉 **Final Model: ETS**
+
+- Lowest overall prediction error  
+- Effectively captures both **trend and seasonal patterns**  
+- Provides stable and reliable forecasts on the test set  
+
+---
+
+## 💡 Key Insights
+
+- Baseline models are insufficient for data with strong trends  
+- Proper transformation and differencing are critical for stationarity  
+- Model comparison is essential — performance varies significantly  
+- ETS is highly effective for real-world economic time series  
+
+---
+
+## 🛠 Tools & Technologies
+
+- **Language:** R  
+- **Libraries:** forecast, ggplot2  
+- **Techniques:** Time-series modeling, statistical diagnostics, model comparison  
+
+---
+
+## 📁 Project Structure
+time-series-retail-forecasting/
+│
+├── data/
+│ └── retail_sales_data.csv
+│
+├── code/
+│ └── time_series_analysis.Rmd
+│
+├── report/
+│ └── time_series_forecasting_report.html
+│
+├── slides/
+│ └── time_series_forecasting_slides.pptx
+│
+└── README.md
+
+
+---
+
+## 🚀 Future Improvements
+
+- Incorporate external variables (e.g., economic indicators)  
+- Explore machine learning-based forecasting models  
+- Analyze structural breaks (e.g., COVID-19 impact)  
+- Build automated forecasting pipelines for real-time updates  
+
+---
+
+## 👤 Author
+
+**Yunelle Teng**  
+Applied Data Science @ University of Chicago  
