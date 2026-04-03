@@ -1,13 +1,13 @@
-# 📈 Time-Series Analysis and Forecasting of U.S. Retail Sales
+# Time-Series Analysis and Forecasting of U.S. Retail Sales
 
-## 📌 Project Overview
+## Project Overview
 This project analyzes and forecasts monthly U.S. retail sales using classical time-series models. The goal is to compare different modeling approaches and identify the most accurate method for capturing both trend and seasonality in real-world economic data.
 
 Retail sales are a key indicator of consumer behavior and overall economic activity. Accurate forecasting helps support business planning, demand estimation, and strategic decision-making.
 
 ---
 
-## 📊 Dataset
+## Dataset
 - **Source:** Federal Reserve Economic Data (FRED)  
 - **Series ID:** MRTSSM44000USN  
 - **Frequency:** Monthly  
@@ -18,7 +18,7 @@ The dataset exhibits a strong upward trend and clear seasonal patterns, making i
 
 ---
 
-## ⚙️ Methodology
+## Methodology
 
 ### 1. Exploratory Data Analysis
 - Visualized the original time series to identify trend and seasonality  
@@ -30,12 +30,12 @@ The dataset exhibits a strong upward trend and clear seasonal patterns, making i
 
 ### 2. Models Implemented
 
-#### 🔹 Baseline Model
+#### Baseline Model
 - **Seasonal Naive**  
   - Assumes values repeat from the same period in the previous year  
   - Serves as a benchmark for comparison  
 
-#### 🔹 Advanced Models
+#### Advanced Models
 - **ETS (Error-Trend-Seasonal)**  
 - **SARIMA (Seasonal ARIMA)**  
 - **Regression with ARMA errors**  
@@ -70,7 +70,7 @@ Residual diagnostics were conducted using:
 | Regression + ARMA | Adds flexibility with explanatory components |
 | **ETS (Best)** | Achieves lowest forecast error and best alignment with actual data |
 
-👉 **Final Model: ETS**
+ **Final Model: ETS**
 
 - Lowest overall prediction error  
 - Effectively captures both **trend and seasonal patterns**  
@@ -78,7 +78,7 @@ Residual diagnostics were conducted using:
 
 ---
 
-## 💡 Key Insights
+## Key Insights
 
 - Baseline models are insufficient for data with strong trends  
 - Proper transformation and differencing are critical for stationarity  
@@ -87,7 +87,7 @@ Residual diagnostics were conducted using:
 
 ---
 
-## 🛠 Tools & Technologies
+## Tools & Technologies
 
 - **Language:** R  
 - **Libraries:** forecast, ggplot2  
@@ -95,22 +95,12 @@ Residual diagnostics were conducted using:
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 time-series-retail-forecasting/
-│
 ├── data/
-│ └── retail_sales_data.csv
-│
 ├── code/
-│ └── time_series_analysis.Rmd
-│
 ├── report/
-│ └── time_series_forecasting_report.html
-│
 ├── slides/
-│ └── time_series_forecasting_slides.pptx
-│
-└── README.md
 
 
 ---
@@ -124,7 +114,7 @@ time-series-retail-forecasting/
 
 ---
 
-## 👤 Author
+## Author
 
 **Yunelle Teng**  
 Applied Data Science @ University of Chicago  
