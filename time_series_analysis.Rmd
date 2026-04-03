@@ -1,0 +1,1004 @@
+---
+title: "practice"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(gridExtra)
+library(tidyverse)
+library(lubridate)
+library(tseries) 
+library(ggplot2)
+library(forecast)
+library(TSA)
+library(grid)
+```
+
+### Data loading
+```{r}
+data <- read_csv("MRTSSM44000USN.csv")
+head(data)
+```
+
+
+```{r}
+data$observation_date <- as.Date(data$observation_date)
+
+MRTSSM44000USN <- ts(
+  data$MRTSSM44000USN,
+  start = c(
+    as.numeric(format(min(data$observation_date), "%Y")),
+    as.numeric(format(min(data$observation_date), "%m"))
+  ),
+  frequency = 12
+)
+```
+
+### Split Train and Test
+```{r}
+train_ts <- window(MRTSSM44000USN, end = c(2022, 12))
+test_ts  <- window(MRTSSM44000USN, start = c(2023, 1))
+
+start(train_ts); end(train_ts)
+start(test_ts); end(test_ts)
+
+h <- length(test_ts)
+```
+
+### Exploration and Transformation
+```{r}
+plot(MRTSSM44000USN,
+     main = "Raw U.S. Retail Sales Series",
+     ylab = "Retail Sales",
+     xlab = "Time")
+```
+
+```{r}
+acf(MRTSSM44000USN, main = "ACF - Raw Series")
+pacf(MRTSSM44000USN, main = "PACF - Raw Series")
+```
+
+```{r}
+MRTSSM44000USN |> 
+  decompose(type = 'multiplicative') |> 
+  autoplot()
+```
+
+```{r}
+bc_MRTSSM44000USN <- BoxCox(MRTSSM44000USN, BoxCox.lambda(MRTSSM44000USN))
+
+plot(bc_MRTSSM44000USN,
+     main = "Box-Cox Series ",
+     ylab = "BC Retail Sales",
+     xlab = "Time")
+
+acf(bc_MRTSSM44000USN, main = "ACF - Box-Cox Series")
+pacf(bc_MRTSSM44000USN, main = "PACF - Box-Cox Series")
+
+adf.test(bc_MRTSSM44000USN)
+kpss.test(bc_MRTSSM44000USN)
+```
+
+
+
+```{r}
+diff1 <- diff(bc_MRTSSM44000USN)
+
+plot(diff1,
+     main = "First Difference of Box-Cox Series",
+     ylab = "Differenced Series",
+     xlab = "Time")
+
+acf(as.numeric(diff1),
+    lag.max = 36,
+    main = "ACF - First Difference")
+
+pacf(as.numeric(diff1),
+     lag.max = 36,
+     main = "PACF - First Difference")
+
+adf.test(diff1)
+kpss.test(diff1)
+```
+
+```{r}
+both_diff <- diff(diff1, lag=12) # add seasonal differencing
+plot(both_diff,
+     main = "First + Seasonal Difference",
+     ylab = "Differenced Series",
+     xlab = "Time")
+
+acf(as.numeric(both_diff),
+    lag.max = 72,
+    main = "ACF - First + Seasonal Difference of Transformed Data")
+
+pacf(as.numeric(both_diff),
+     lag.max = 72,
+     main = "PACF - First + Seasonal Difference of Transformed Data")
+
+adf.test(both_diff)
+kpss.test(both_diff)
+
+eacf(both_diff)
+```
+
+# Baseline Model: Seasonal Naive model fitting
+因为有明显的、consistent yearly seasonal pattern，理所当然用了seasonal naive作为baseline。
+```{r}
+snaive_model <- snaive(train_ts, h = h)
+
+# Baseline accuracy
+accuracy(snaive_model, test_ts)
+
+# Baseline residual check
+checkresiduals(snaive_model)
+
+# Plot baseline forecast
+autoplot(window(MRTSSM44000USN, start = c(2018, 1))) +
+  autolayer(test_ts, series = "Actual Test Data") +
+  autolayer(snaive_model$mean, series = "Seasonal Naive Forecast") +
+  ggtitle("Seasonal Naive Forecast vs Actual") +
+  xlab("Time") +
+  ylab("Retail Sales") +
+  theme_minimal() +
+  theme(
+  plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
+)
+```
+
+# ETS model fitting
+```{r}
+# Box-Cox transformation on training data
+lambda_train <- BoxCox.lambda(train_ts)
+bc_train <- BoxCox(train_ts, lambda_train)
+
+cat("Optimal Box-Cox Lambda:", round(lambda_train, 4), "\n")
+
+ets_model <- ets(bc_train)
+summary(ets_model)
+
+# Forecast for the test period
+h <- length(test_ts)
+forecast_boxcox <- forecast(ets_model, h = h)
+
+# Transform forecasts back to original scale
+forecast_original <- InvBoxCox(forecast_boxcox$mean, lambda_train)
+
+# Evaluate accuracy
+rmse <- sqrt(mean((test_ts - forecast_original)^2))
+mape <- mean(abs((test_ts - forecast_original) / test_ts)) * 100
+
+cat("ETS Model Evaluation Results: \n")
+cat("ETS form selected:", ets_model$method, "\n")
+cat("RMSE:", round(rmse, 2), "\n")
+cat("MAPE:", round(mape, 2), "%\n")
+
+# Plot forecast vs actual
+autoplot(window(MRTSSM44000USN, start = c(2018, 1))) +
+  autolayer(test_ts, series = "Test Data") +
+  autolayer(forecast_original, series = "ETS Forecast") +
+  ggtitle("U.S. Retail Sales: ETS Forecast vs Actual (2023+)") +
+  xlab("Time") +
+  ylab("Retail Sales") +
+  theme_minimal()
+```
+
+# SARIMA model fitting
+```{r}
+# Automatic SARIMA
+auto_sarima <- auto.arima(
+  train_ts,
+  lambda = "auto",
+  seasonal = TRUE,
+  stepwise = FALSE,
+  approximation = FALSE
+)
+
+summary(auto_sarima)
+checkresiduals(auto_sarima)
+
+auto_sarima_fc <- forecast(auto_sarima, h = h)
+accuracy(auto_sarima_fc, test_ts)
+auto_sarima$aicc
+```
+
+```{r}
+# # 包子奕的auto arima: ARIMA(3,0,1)(0,1,1)[12]
+# auto_sarima <- auto.arima(train_ts, lambda = 'auto', seasonal = TRUE, stepwise = FALSE, approximation = FALSE)
+# # 但我们在之前的步骤中决定用1st + seasonal differencing所以这里我改成令d=1 & D=1
+# # 且方便解决residual里的autocorrelation让Ljung test通过
+# auto_sarima_fixedd <- auto.arima(train_ts, d = 1, D = 1, lambda = 'auto', seasonal = TRUE, stepwise = FALSE, approximation = FALSE)
+# 
+# summary(auto_sarima)
+# checkresiduals(auto_sarima)
+# 
+# auto_fc <- forecast(auto_sarima, h = length(test_ts))
+# auto_pred <- auto_fc$mean
+# 
+# accuracy(auto_pred, test_ts)
+# auto_sarima$aicc
+```
+
+
+```{r}
+# Automatic SARIMA with fixed differencing
+auto_sarima_fixed <- auto.arima(
+  train_ts,
+  d = 1,
+  D = 1,
+  lambda = "auto",
+  seasonal = TRUE,
+  stepwise = FALSE,
+  approximation = FALSE
+)
+
+summary(auto_sarima_fixed)
+checkresiduals(auto_sarima_fixed)
+auto_sarima_fixed_fc <- forecast(auto_sarima_fixed, h = h)
+accuracy(auto_sarima_fixed_fc, test_ts)
+auto_sarima_fixed$aicc
+```
+
+```{r}
+0.0679/0.0088 # =7.7, > 2, so drift is needed. But drift can only be used if d + D < 2
+```
+
+```{r}
+plot(auto_sarima_fc,
+     main = "SARIMA Forecast") # forecast会自动back-transform成original unit
+```
+
+```{r}
+auto_sarima_pred <-auto_sarima_fc$mean
+
+plot(test_ts,
+     main = "SARIMA Forecast vs Actual",
+     ylab = "Retail Sales",
+     xlab = "Time")
+
+lines(auto_sarima_pred, col = "red", lwd = 2)
+
+legend("topleft",
+       legend = c("Actual", "SARIMA Forecast"),
+       col = c("black", "red"),
+       lty = 1,
+       lwd = 2)
+```
+
+```{r}
+acc <- accuracy(auto_sarima_pred, test_ts)
+acc
+```
+
+
+```{r}
+sarima <- Arima(train_ts, lambda = 'auto', order=c(2, 1, 0), seasonal=c(3, 1, 1))
+checkresiduals(sarima)
+```
+
+```{r}
+model1 <- Arima(train_ts, lambda = 'auto', order=c(4, 1, 3), seasonal=c(3, 1, 1))
+checkresiduals(model1)
+
+model2 <- Arima(train_ts, lambda = 'auto', order=c(2, 1, 4), seasonal=c(3, 1, 1))
+checkresiduals(model2)
+
+model3 <- Arima(train_ts, lambda = 'auto', order=c(1, 1, 1), seasonal=c(3, 1, 1), include.drift=TRUE)
+checkresiduals(model3)
+
+model4 <- Arima(train_ts, lambda = 'auto', order=c(2, 1, 2), seasonal=c(3, 1, 2))
+checkresiduals(model4)
+
+model5 <- Arima(train_ts, lambda = 'auto', order=c(2, 1, 0), seasonal=c(3, 1, 1))
+checkresiduals(model5)
+
+model6 <- Arima(train_ts, lambda = 'auto', order=c(1, 1, 1), seasonal=c(3, 1, 1))
+checkresiduals(model6)
+```
+
+
+```{r}
+# grid search, 没产出什么有用model因基本都不pass ljung test
+efficient_sarima_search <- function(train_ts, test_ts, base_model) {
+  
+  ord <- arimaorder(base_model)
+  
+  p <- ord[1]; d <- ord[2]; q <- ord[3]
+  P <- ord[4]; D <- ord[5]; Q <- ord[6]
+  
+  candidates <- expand.grid(
+    p = unique(p + c(-1,0,1)),
+    d = unique(d + c(-1,0,1)),
+    q = unique(q + c(-1,0,1)),
+    P = unique(P + c(-1,0,1)),
+    D = D,
+    Q = unique(Q + c(-1,0,1))
+  )
+  
+  candidates <- subset(candidates,
+                       p >= 0 & d >= 0 & q >= 0 &
+                       P >= 0 & Q >= 0 &
+                       p + q + P + Q <= 6)
+  
+  results <- list()
+  
+  for(i in seq_len(nrow(candidates))) {
+    
+    p <- candidates$p[i]
+    d <- candidates$d[i]
+    q <- candidates$q[i]
+    P <- candidates$P[i]
+    D <- candidates$D[i]
+    Q <- candidates$Q[i]
+    
+    model <- tryCatch(
+      Arima(
+        train_ts,
+        lambda = 'auto',
+        order = c(p,d,q),
+        seasonal = c(P,D,Q)
+      ),
+      error = function(e) NULL
+    )
+    
+    if(!is.null(model)) {
+      
+      fc <- forecast(model, h = length(test_ts))
+      
+      # compute RMSE manually (safer)
+      rmse <- sqrt(mean((fc$mean - test_ts)^2, na.rm = TRUE))
+      
+      results[[length(results)+1]] <- data.frame(
+        Model = paste0("SARIMA(",p,",",d,",",q,")(",
+                       P,",",D,",",Q,")[12]"),
+        AICc = model$aicc,
+        BIC = model$bic,
+        RMSE = rmse
+      )
+      
+    }
+  }
+  
+  if(length(results) == 0) {
+    stop("No candidate models successfully fitted.")
+  }
+  
+  res <- do.call(rbind, results)
+  res <- res[order(res$RMSE), ]
+  rownames(res) <- NULL
+  
+  return(res)
+}
+
+
+results <- efficient_sarima_search(
+  train_ts,
+  test_ts,
+  sarima
+)
+
+head(results, 10)
+```
+
+# Comparison
+```{r}
+model_compare <- function(test_ts, h, ...) {
+  
+  models <- list(...)
+  model_names <- names(models)
+  
+  results <- lapply(seq_along(models), function(i) {
+    
+    m <- models[[i]]
+    
+    # Forecast
+    fc <- forecast(m, h = h)
+    
+    # Accuracy
+    acc <- accuracy(fc, test_ts)
+    
+    # Ljung-Box test
+    lb <- Box.test(residuals(m),
+                   lag = 24,
+                   type = "Ljung-Box",
+                   fitdf = length(coef(m)))
+    
+    data.frame(
+      Model = model_names[i],
+      RMSE = acc["Test set", "RMSE"],
+      #MAE = acc["Test set", "MAE"],
+      MAPE = acc["Test set", "MAPE"],
+      AICc = m$aicc,
+      BIC = BIC(m),
+      LjungBox_pvalue = round(lb$p.value, 3)
+    )
+    
+  })
+  
+  results <- do.call(rbind, results)
+  rownames(results) <- NULL
+  
+  return(results)
+}
+
+results <- model_compare(
+  test_ts,
+  h = length(test_ts),
+  auto_sarima = auto_sarima,
+  auto_sarima_fixed_d = auto_sarima_fixed,
+  'ARIMA(2,1,0)(3,1,1)' = sarima,
+  'ARIMA(4,1,3)(3,1,1)' = model1,
+  'ARIMA(2,1,4)(3,1,1)' = model2,
+  'ARIMA(1,1,1)(3,1,1)' = model3,
+  'ARIMA(2,1,2)(3,1,2)' = model4,
+  'ARIMA(2,1,0)(3,1,1)' = model5,
+  'ARIMA(1,1,1)(3,1,1)' = model6
+)
+
+results
+```
+
+综合比较以上candidates，model1 (ARIMA(4,1,3)(3,1,1)_12) 胜出, 因为它有最小的RMSE和MAPE，较小的AICc，BIC和auto.arima选的model差不多没比其他大多少，且通过了Ljung-Box test.
+
+
+因为covid爆发期间的residual variance很大（见前面的checkresidual图），所以考虑把“是否在covid影响期”作为 variable，用regression with ARMA error.
+并且从原始数据的time plot发现每年12月sale激增，1、2月骤降，所以考虑把月份作为variable - 用regression with ARMA error。
+
+# Regression with ARMA Error
+## Covid
+```{r}
+# Zoom into the residuals during the pandemic period
+resid_zoom <- window(residuals(auto_sarima), start = c(2020, 1), end = c(2022, 12))
+
+# Plot the zoomed-in residuals
+plot(resid_zoom, type = "o", pch = 16, col = "red",
+     main = "Zoomed Residuals: 2020-2022",
+     ylab = "Error Value", xlab = "Year")
+abline(h = 0, lty = 2) # Add a center line
+```
+covid during 2020-2 to 2021-4, treat this as a dummy variable
+
+```{r}
+covid_period <- (time(train_ts) >= 2020 + (2-1)/12 & time(train_ts) <= 2021 + (4-1)/12)
+shock_regressor <- as.numeric(covid_period)
+```
+
+```{r}
+reg_arma <- auto.arima(
+  train_ts, 
+  xreg = shock_regressor,
+  lambda = "auto", 
+  stepwise = FALSE,
+  approximation = FALSE
+)
+checkresiduals(reg_arma)
+```
+
+```{r}
+summary(reg_arma)
+```
+|-0.5105/0.3281| < 1.96 => covid variable不significant
+The level of the series during covid didn't drop much, so a step dummy might not be very significant (which matches the low t-statistic).
+A standard dummy variable in a regression only shifts the mean. It doesn't fix the variance.
+
+## Month (Holiday Effect)
+```{r}
+ggsubseriesplot(train_ts) +
+  labs(
+    title = "Seasonal Subseries Plot of Sale",
+    x = "Quarter",
+    y = "Total Sales"
+  ) +
+  theme(
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5)
+  )
+```
+
+```{r eval=FALSE}
+# month_dummies <- seasonaldummy(train_ts)
+# xregs <- cbind(COVID = shock_regressor, month_dummies)
+# # Since using seasonal dummies, try non-seasonal ARIMA for the error term (D=0) to avoid over-modeling
+# reg_arma_mo <- forecast::auto.arima(
+#   train_ts,
+#   xreg = xregs,
+#   lambda = "auto", 
+#   stepwise = FALSE,
+#   approximation = FALSE
+# )
+# checkresiduals(reg_arma_mo)
+# summary(reg_arma_mo)
+# 忘记删掉没用的covid variable了
+```
+
+前面看过drift term不significant，所以后面都没include drift
+```{r}
+xregs_month <- seasonaldummy(train_ts)
+
+# fit regression with ARMA errors
+reg_arma_month <- forecast::auto.arima(
+  train_ts,
+  xreg = xregs_month,
+  lambda = "auto",
+  stepwise = FALSE,
+  approximation = FALSE
+)
+
+checkresiduals(reg_arma_month)
+summary(reg_arma_month)
+```
+auto arima选出的model Ljung box test没过，order太低有correlation没capture到，试manual fit。
+
+```{r}
+reg_arma11 <- Arima(train_ts, lambda = 'auto', xreg = xregs_month, order=c(3, 1, 2), seasonal=c(2, 1, 3))
+checkresiduals(reg_arma11)
+
+reg_arma12 <- Arima(train_ts, lambda = 'auto', xreg = xregs_month, order=c(2, 1, 4), seasonal=c(3, 0, 1))
+checkresiduals(reg_arma12)
+
+reg_arma13 <- Arima(train_ts, lambda = 'auto', xreg = xregs_month, order=c(2, 1, 3), seasonal=c(2, 1, 1))
+checkresiduals(reg_arma13)
+
+reg_arma14 <- Arima(train_ts, lambda = 'auto', xreg = xregs_month, order=c(2, 1, 3), seasonal=c(3, 0, 2))
+checkresiduals(reg_arma14)
+
+reg_arma15 <- Arima(train_ts, lambda = 'auto', xreg = xregs_month, order=c(2, 1, 1), seasonal=c(2, 0, 3))
+checkresiduals(reg_arma15)
+
+reg_arma16 <- Arima(train_ts, lambda = 'auto', xreg = xregs_month, order=c(3, 1, 3), seasonal=c(2, 0, 3))
+checkresiduals(reg_arma16)
+```
+各个月份的coef / se都挺大的=>significant
+By using monthly dummies, the auto.arima function decided it didn't need a seasonal difference ($D=0$). However, the low p-value suggests that the "memory" of the seasonal cycle is more complex than just a fixed monthly jump.
+So we do some manual experiements on higher orders:?
+
+
+```{r}
+# reg_arma1 <- Arima(train_ts, lambda = 'auto', xreg = xregs, order=c(4, 1, 3), seasonal=c(3, 0, 1))
+# checkresiduals(reg_arma1)
+# 
+# reg_arma2 <- Arima(train_ts, lambda = 'auto', xreg = xregs, order=c(2, 1, 4), seasonal=c(3, 0, 1))
+# checkresiduals(reg_arma2)
+# 
+# #reg_arma3 <- Arima(train_ts, lambda = 'auto', xreg = xregs, order=c(1, 1, 1), seasonal=c(3, 0, 1), include.drift = TRUE)
+# #checkresiduals(model3)
+# 
+# reg_arma4 <- Arima(train_ts, lambda = 'auto', xreg = xregs, order=c(2, 1, 2), seasonal=c(3, 0, 2))
+# checkresiduals(reg_arma4)
+# 
+# reg_arma5 <- Arima(train_ts, lambda = 'auto', xreg = xregs, order=c(2, 1, 0), seasonal=c(3, 0, 1))
+# checkresiduals(reg_arma5)
+# 
+# reg_arma6 <- Arima(train_ts, lambda = 'auto', xreg = xregs, order=c(1, 0, 1), seasonal=c(3, 0, 1))
+# checkresiduals(reg_arma6)
+```
+
+```{r}
+test_start <- start(test_ts)
+test_freq <- frequency(test_ts)
+
+#xreg_test <- cbind(
+  #COVID = rep(0, length(test_ts)), 
+  #seasonaldummy(train_ts, h = length(test_ts))
+#)
+xreg_test  <- seasonaldummy(train_ts, h = length(test_ts))
+xreg_test <- ts(xreg_test, start = test_start, frequency = test_freq)
+```
+
+
+```{r}
+# model_compare_reg <- function(test_ts, xreg_test, ...) {
+#   
+#   models <- list(...)
+#   model_names <- names(models)
+#   h <- length(test_ts)
+#   
+#   results <- lapply(seq_along(models), function(i) {
+#     m <- models[[i]]
+#     
+#     # Check if the model has an xreg component
+#     # Regression models store the number of xreg terms in m$xreg
+#     n_xreg_expected <- if(!is.null(m$xreg)) ncol(as.matrix(m$xreg)) else 0
+#     n_xreg_provided <- ncol(as.matrix(xreg_test))
+#     
+#     # 1. Forecast Logic
+#     fc <- tryCatch({
+#       if (n_xreg_expected > 0) {
+#         # Check if column counts match before even trying
+#         if (n_xreg_expected != n_xreg_provided) {
+#           stop(paste("Model expects", n_xreg_expected, "regressors, but got", n_xreg_provided))
+#         }
+#         forecast::forecast(m, xreg = xreg_test, h = h)
+#       } else {
+#         forecast::forecast(m, h = h)
+#       }
+#     }, error = function(e) {
+#       # This will now print the REAL error so you can see it
+#       warning(paste("Model", model_names[i], "failed:", e$message))
+#       return(NULL)
+#     })
+#     
+#     # If the forecast failed, return an empty data frame row
+#     if (is.null(fc)) return(NULL)
+#     
+#     # 2. Accuracy
+#     acc <- forecast::accuracy(fc, test_ts)
+#     
+#     # 3. Ljung-Box test
+#     ord <- forecast::arimaorder(m)
+#     # Sum of p, q, P, Q (indices 1, 3, 4, 6 in the arimaorder vector)
+#     arma_df <- sum(ord[c(1, 3, 4, 6)])
+# 
+#     lb <- Box.test(residuals(m),
+#                lag = 24,
+#                type = "Ljung-Box",
+#                fitdf = arma_df)
+#     
+#     data.frame(
+#       Model = model_names[i],
+#       RMSE = as.numeric(acc["Test set", "RMSE"]),
+#       MAPE = as.numeric(acc["Test set", "MAPE"]),
+#       AICc = if(!is.null(m$aicc)) m$aicc else NA,
+#       BIC = BIC(m),
+#       LjungBox_pvalue = round(lb$p.value, 3),
+#       stringsAsFactors = FALSE
+#     )
+#   })
+#   
+#   # Filter out NULL results from failed models
+#   results <- Filter(Negate(is.null), results)
+#   
+#   res_df <- do.call(rbind, results)
+#   if(nrow(res_df) > 0) {
+#     res_df <- res_df[order(-res_df$LjungBox_pvalue, res_df$RMSE), , drop = FALSE]
+#   }
+#   
+#   rownames(res_df) <- NULL
+#   return(res_df)
+# }
+# 
+# train_length <- length(train_ts)
+# h_test <- length(test_ts)
+# 
+# results <- model_compare_reg(
+#   test_ts,
+#   xreg_test,
+#   auto_reg_arma = reg_arma_mo,
+#   reg_arma1 = reg_arma1,
+#   reg_arma2 = reg_arma2,
+#   reg_arma4 = reg_arma4,
+#   reg_arma5 = reg_arma5,
+#   reg_arma6 = reg_arma6
+# )
+# 
+# results
+```
+
+reg_arma2 (ARIMA(2,1,4)(3,0,1) with covid and month as regressor) is the best model here - lowest everything, passes Ljung test.
+Compared to the SARIMA model1	11542.15	1.477193	508.6460	554.3441, it has lower RMSE, MAPE (can't use AICc and BIC to compare models of different differencing orders).
+
+```{r}
+# train_length <- length(train_ts)
+# h_test <- length(test_ts)
+# 
+# results <- model_compare_reg(
+#   test_ts,
+#   xreg_test,
+#   auto_reg_arma = reg_arma_mo,
+#   'reg_arma(3,1,2)(2,1,3)' = reg_arma11,
+#   'reg_arma(2,1,4)(3,0,1)' = reg_arma12,
+#   'reg_arma(2,1,3)(2,1,1)' = reg_arma13,
+#   'reg_arma(2,1,3)(3,0,2)' = reg_arma14,
+#   'reg_arma(2,1,1)(2,0,3)' = reg_arma15,
+#   'reg_arma(3,1,3)(2,0,3)' = reg_arma16
+# )
+# results
+```
+reg_arma12 (reg_arma(2,1,4)(3,0,1)) wins. (p-value > 0.01 significance level就行)
+
+```{r}
+# # 比较sarima最好的和reg with arma最好的model
+# reg_candidate <- model_compare_reg(
+#   test_ts,
+#   xreg_test,
+#   #reg_arma_covmo = reg_arma2,
+#   'reg_arma(2,1,4)(3,0,1)' = reg_arma12
+# )
+# sarima_candidate <- model_compare(
+#   test_ts,
+#   h = length(test_ts),
+#   'sarima(4,1,3)(3,1,1)_12' = model1
+# )
+# sarima_vs_reg_results <- rbind(reg_candidate, sarima_candidate)
+# sarima_vs_reg_results |> 
+#   select(-c(AICc, BIC)) # can't use aic and bic to compare models with different orders of d and D !
+```
+sarima (ARIMA(4,1,3)(3,1,1)_12) wins.
+
+```{r}
+h <- length(test_ts)
+
+fc_model1 <- forecast(model1, h = h)
+
+# reg_arma2 uses COVID dummy + seasonal dummies
+#xreg_test <- cbind(
+  #COVID = rep(0, h),
+  #seasonaldummy(train_ts, h = h)
+#)
+xreg_test  <- seasonaldummy(train_ts, h = length(test_ts))
+xreg_test <- ts(xreg_test, start = test_start, frequency = test_freq)
+
+fc_reg_arma12 <- forecast(reg_arma12, xreg = xreg_test, h = h)
+
+# Seasonal naive
+fc_snaive <- forecast(snaive_model, h = h)
+
+# ETS
+fc_ets_boxcox <- forecast(ets_model, h = h)
+
+ets_mean  <- InvBoxCox(fc_ets_boxcox$mean,  lambda_train)
+ets_lower <- InvBoxCox(fc_ets_boxcox$lower, lambda_train)
+ets_upper <- InvBoxCox(fc_ets_boxcox$upper, lambda_train)
+```
+
+
+```{r}
+rmse <- function(actual, pred) {
+  sqrt(mean((actual - pred)^2, na.rm = TRUE))
+}
+
+mae <- function(actual, pred) {
+  mean(abs(actual - pred), na.rm = TRUE)
+}
+
+mape <- function(actual, pred) {
+  mean(abs((actual - pred) / actual), na.rm = TRUE) * 100
+}
+
+sarima_pred <- fc_model1$mean
+regarma_pred <- fc_reg_arma12$mean
+snaive_pred <- fc_snaive$mean
+ets_pred <- InvBoxCox(fc_ets_boxcox$mean, lambda_train)
+
+# Ljung-Box p-values
+lb_sarima <- Box.test(
+  residuals(model1),
+  lag = 24,
+  type = "Ljung-Box",
+  fitdf = sum(forecast::arimaorder(model1)[c(1,3,4,6)])
+)
+
+lb_regarma <- Box.test(
+  residuals(reg_arma12),
+  lag = 24,
+  type = "Ljung-Box",
+  fitdf = sum(forecast::arimaorder(reg_arma12)[c(1,3,4,6)])
+)
+
+lb_ets <- Box.test(
+  residuals(ets_model),
+  lag = 24,
+  type = "Ljung-Box",
+  fitdf = length(ets_model$par)
+)
+
+lb_snaive <- Box.test(
+  residuals(snaive_model),
+  lag = 24,
+  type = "Ljung-Box",
+  fitdf = 0
+)
+
+comparison_table <- data.frame(
+  Model = c(
+    "SARIMA",
+    "Regression with ARMA Errors",
+    "ETS",
+    "Seasonal Naive"
+  ),
+  RMSE = c(
+    rmse(test_ts, sarima_pred),
+    rmse(test_ts, regarma_pred),
+    rmse(test_ts, ets_pred),
+    rmse(test_ts, snaive_pred)
+  ),
+  MAPE = c(
+    mape(test_ts, sarima_pred),
+    mape(test_ts, regarma_pred),
+    mape(test_ts, ets_pred),
+    mape(test_ts, snaive_pred)
+  ),
+  LjungBox_pvalue = c(
+    round(lb_sarima$p.value, 3),
+    round(lb_regarma$p.value, 3),
+    round(lb_ets$p.value, 3),
+    round(lb_snaive$p.value, 3)
+  )
+)
+
+comparison_table <- comparison_table[order(comparison_table$RMSE), ]
+comparison_table
+```
+
+```{r, fig.width=10, fig.height=5}
+autoplot(test_ts, series = "Actual Test Data") +
+  autolayer(fc_model1$mean, series = "SARIMA") +
+  autolayer(fc_reg_arma12$mean, series = "Regression with ARMA Errors") +
+  autolayer(ets_pred, series = "ETS") +
+  autolayer(fc_snaive$mean, series = "Seasonal Naive") +
+  ggtitle("Forecast Comparison on Test Set") +
+  xlab("Time") +
+  ylab("Retail Sales") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5)
+  )
+```
+
+```{r, fig.width=12, fig.height=5}
+autoplot(window(MRTSSM44000USN, start = c(2019, 1)), colour = "grey60") +
+  autolayer(test_ts, series = "Actual Test Data") +
+  autolayer(fc_model1$mean, series = "SARIMA") +
+  autolayer(fc_reg_arma12$mean, series = "Regression with ARMA Errors") +
+  autolayer(ets_pred, series = "ETS") +
+  autolayer(fc_snaive$mean, series = "Seasonal Naive") +
+  ggtitle("Forecast Comparison: Actual vs Four Models") +
+  xlab("Time") +
+  ylab("Retail Sales") +
+  theme_minimal() +
+    theme(
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5)
+  )
+```
+
+
+```{r, fig.width=12, fig.height=8}
+make_forecast_plot <- function(train_df, test_df, title_text, forecast_color, model_name){
+
+  ggplot() +
+    geom_line(
+      data = train_df,
+      aes(x = Time, y = Train),
+      colour = "grey60",
+      linewidth = 0.7
+    ) +
+    geom_ribbon(
+      data = test_df,
+      aes(x = Time, ymin = Lower95, ymax = Upper95),
+      fill = forecast_color,
+      alpha = 0.20
+    ) +
+    geom_ribbon(
+      data = test_df,
+      aes(x = Time, ymin = Lower80, ymax = Upper80),
+      fill = forecast_color,
+      alpha = 0.2
+    ) +
+    geom_line(
+      data = test_df,
+      aes(x = Time, y = Mean, colour = model_name),
+      linewidth = 1
+    ) +
+    geom_line(
+      data = test_df,
+      aes(x = Time, y = Actual, colour = "Actual Test Data"),
+      linewidth = 0.6,
+      linetype = "dashed"
+    ) +
+    scale_colour_manual(
+      values = setNames(
+        c("blue", forecast_color),
+        c("Actual Test Data", model_name)
+      )
+    ) +
+    labs(
+      title = title_text,
+      x = "Time",
+      y = "Retail Sales",
+      colour = "Series"
+    ) +
+    theme_minimal()
+}
+regarma_df <- data.frame(
+  Time = as.numeric(time(test_ts)),
+  Actual = as.numeric(test_ts),
+  Mean = as.numeric(fc_reg_arma12$mean),
+  Lower80 = as.numeric(fc_reg_arma12$lower[, 1]),
+  Upper80 = as.numeric(fc_reg_arma12$upper[, 1]),
+  Lower95 = as.numeric(fc_reg_arma12$lower[, 2]),
+  Upper95 = as.numeric(fc_reg_arma12$upper[, 2])
+)
+sarima_df <- data.frame(
+  Time = as.numeric(time(test_ts)),
+  Actual = as.numeric(test_ts),
+  Mean = as.numeric(fc_model1$mean),
+  Lower80 = as.numeric(fc_model1$lower[, 1]),
+  Upper80 = as.numeric(fc_model1$upper[, 1]),
+  Lower95 = as.numeric(fc_model1$lower[, 2]),
+  Upper95 = as.numeric(fc_model1$upper[, 2])
+)
+snaive_df <- data.frame(
+  Time = as.numeric(time(test_ts)),
+  Actual = as.numeric(test_ts),
+  Mean = as.numeric(fc_snaive$mean),
+  Lower80 = as.numeric(fc_snaive$lower[, 1]),
+  Upper80 = as.numeric(fc_snaive$upper[, 1]),
+  Lower95 = as.numeric(fc_snaive$lower[, 2]),
+  Upper95 = as.numeric(fc_snaive$upper[, 2])
+)
+ets_df <- data.frame(
+  Time = as.numeric(time(test_ts)),
+  Actual = as.numeric(test_ts),
+  Mean = as.numeric(ets_mean),
+  Lower80 = as.numeric(ets_lower[, 1]),
+  Upper80 = as.numeric(ets_upper[, 1]),
+  Lower95 = as.numeric(ets_lower[, 2]),
+  Upper95 = as.numeric(ets_upper[, 2])
+)
+train_recent <- window(train_ts, start = c(2019, 1))
+
+train_df <- data.frame(
+  Time = as.numeric(time(train_recent)),
+  Train = as.numeric(train_recent)
+)
+
+test_df <- data.frame(
+  Time = as.numeric(time(test_ts)),
+  Actual = as.numeric(test_ts)
+)
+p1 <- make_forecast_plot(
+  train_df,
+  sarima_df,
+  "SARIMA vs Actual",
+  "lightgreen",
+  "SARIMA"
+)
+
+p2 <- make_forecast_plot(
+  train_df,
+  regarma_df,
+  "Regression with ARMA Errors vs Actual",
+  "orange",
+  "Regression ARMA"
+)
+
+p3 <- make_forecast_plot(
+  train_df,
+  ets_df,
+  "ETS vs Actual",
+  "lightcoral",
+  "ETS"
+)
+
+p4 <- make_forecast_plot(
+  train_df,
+  snaive_df,
+  "Seasonal Naive vs Actual",
+  "lightskyblue",
+  "Seasonal Naive"
+)
+
+grid.arrange(
+  p1, p2,
+  p3, p4,
+  ncol = 2,
+  top = textGrob(
+  "Forecast Confidence Interval Comparison by Model",
+  gp = gpar(fontsize = 18, fontface = "bold"),
+  just = "center"
+  )
+)
+```
+
+
+“Regression models allow for the inclusion of a lot of
+relevant information from predictor variables, but do not allow for the subtle
+time series dynamics that can be handled with ARIMA models.”
+
+# Future Work
+covid爆发期的大variance大增，算是一种structural break but in terms of variance not mean. Can train the model on Pre break, and test on post break. See how it performs (compare with model trained on post break).
